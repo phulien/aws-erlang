@@ -9,7 +9,8 @@
 -module(aws_s3_presigned_url).
 
 -export([ make_presigned_v4_url/5,
-          make_presigned_v4_url/6
+          make_presigned_v4_url/6,
+          make_presigned_v4_url/7
         ]).
 
 -include_lib("hackney/include/hackney_lib.hrl").
@@ -21,8 +22,12 @@
 make_presigned_v4_url(Client0, Method, ExpireSeconds, Bucket, Key) ->
     make_presigned_v4_url(Client0, Method, ExpireSeconds, Bucket, Key, path).
 
--spec make_presigned_v4_url(map(), get | put, integer(), binary(), binary(),path|virtual_host) -> {ok, binary()}.
+-spec make_presigned_v4_url(map(), get | put, integer(), binary(), binary(), path|virtual_host) -> {ok, binary()}.
 make_presigned_v4_url(Client0, Method, ExpireSeconds, Bucket, Key, Style) ->
+    make_presigned_v4_url(Client0, Method, ExpireSeconds, Bucket, Key, Style, undefined).
+
+-spec make_presigned_v4_url(map(), get | put, integer(), binary(), binary(), path|virtual_host, undefined|binary()) -> {ok, binary()}.
+make_presigned_v4_url(Client0, Method, ExpireSeconds, Bucket, Key, Style, Tag) ->
     MethodBin = aws_request:method_to_binary(Method),
     Path = build_path(Client0,Bucket,Key,Style),
     Client = Client0#{service => <<"s3">>},
@@ -38,12 +43,20 @@ make_presigned_v4_url(Client0, Method, ExpireSeconds, Bucket, Key, Style) ->
                , {body_digest, <<"UNSIGNED-PAYLOAD">>}
                , {uri_encode_path, false} %% We already encode in build_path/4
                ],
-    Options = case SecurityToken of
-                undefined ->
-                  Options0;
-                _ ->
-                  [{session_token, hackney_url:urlencode(SecurityToken)} | Options0]
-              end,
+    Options1 =
+        case SecurityToken of
+            undefined ->
+                Options0;
+            _ ->
+                [{session_token, hackney_url:urlencode(SecurityToken)} | Options0]
+        end,
+    Options =
+        case Tag of
+            undefined ->
+                Options1;
+            _ ->
+                [{tag, hackney_url:urlencode(Tag)} | Options1]
+        end,
     {ok, aws_signature:sign_v4_query_params(AccessKeyID, SecretAccessKey, Region, Service, Now, MethodBin, URL, Options)}.
 
 %%====================================================================
